@@ -24,20 +24,61 @@ References:
 var fs = require('fs');
 var program = require('commander');
 var cheerio = require('cheerio');
+var sys = require('util');
+var rest = require('restler');
+
 var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
+var PAGEFILE_DEFAULT = "downloaded.html";
+
+webInput = "";
+flag = false;
 
 var assertFileExists = function(infile) {
     var instr = infile.toString();
-    if(!fs.existsSync(instr)) {
+    var begin = infile.substring(0,4);
+    if(begin == "http" || begin.substring(0,3) == "www") {
+    	// la string é un URL
+    	// console.log("infile is a URL");
+		
+		rest.get(infile)
+		.on('complete', function(response) { 
+			webInput = response;
+			 
+			var checkJson = checkHtmlFile(program.file, program.checks);
+    
+    		var outJson = JSON.stringify(checkJson, null, 4);
+    			console.log(outJson);
+			 
+			return 0;
+			 // console.log(webInput);
+		 })
+		 .on('error', function(err) { 
+			 console.log('An error occurred:' + err); 
+		 });
+		flag = true;
+		} else {
+    	// la string é un filepath
+    	if(!fs.existsSync(instr)) {
         console.log("%s does not exist. Exiting.", instr);
         process.exit(1); // http://nodejs.org/api/process.html#process_process_exit_code
+    	}
     }
+    
+    
     return instr;
 };
 
+
+
 var cheerioHtmlFile = function(htmlfile) {
-    return cheerio.load(fs.readFileSync(htmlfile));
+    if(flag) {
+    	// console.log("cheerioHtmlFile: htmlFile is a URL, ora load() this: " + webInput);
+    	return cheerio.load(webInput);	
+    } else {
+    	// console.log("cheerioHtmlFile: htmlFile is filepath");
+    	return cheerio.load(fs.readFileSync(htmlfile));
+	}
 };
 
 var loadChecks = function(checksfile) {
@@ -45,6 +86,7 @@ var loadChecks = function(checksfile) {
 };
 
 var checkHtmlFile = function(htmlfile, checksfile) {
+    // console.log("checkHtmlFile: " + htmlfile);
     $ = cheerioHtmlFile(htmlfile);
     var checks = loadChecks(checksfile).sort();
     var out = {};
@@ -66,9 +108,12 @@ if(require.main == module) {
         .option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
         .option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
         .parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+    
+    if(program.file.substring(0,4) != "http" && program.file.substring(0,3) != "www") {
+    	var checkJson = checkHtmlFile(program.file, program.checks);
+    	var outJson = JSON.stringify(checkJson, null, 4);
+    	console.log(outJson);
+    }
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
